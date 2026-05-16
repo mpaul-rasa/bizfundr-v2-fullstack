@@ -1,0 +1,29 @@
+{
+  "name": "buzfundr-blockchain",
+  "version": "2.0.0",
+  "description": "Buzfundr Vault — On-chain crowdfunding (NI 45-110 compliant)",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "compile": "npx hardhat compile",
+    "deploy:local": "npx hardhat run scripts/deploy.js --network localhost",
+    "deploy:testnet": "npx hardhat run scripts/deploy.js --network amoy",
+    "deploy:mainnet": "npx hardhat run scripts/deploy.js --network polygon"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.0.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "ethers": "^6.13.0",
+    "express": "^4.21.0",
+    "express-rate-limit": "^7.4.0",
+    "helmet": "^7.1.0",
+    "winston": "^3.14.0"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "hardhat": "^2.22.0",
+    "nodemon": "^3.1.0"
+  }
+}

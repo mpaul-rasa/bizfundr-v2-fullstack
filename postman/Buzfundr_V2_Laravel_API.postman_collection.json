@@ -1,0 +1,96 @@
+{
+  "info": {
+    "name": "Buzfundr V2 — Laravel API",
+    "description": "Full-stack crowdfunding with on-chain vaults.\nBase: http://localhost:8000/api\n\nRun scenarios in order: A (success), B (fail), C (refund), D (emergency).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base", "value": "http://localhost:8000/api" },
+    { "key": "offering_id", "value": "" },
+    { "key": "investor_wallet", "value": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8" },
+    { "key": "issuer_wallet", "value": "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC" }
+  ],
+  "item": [
+    {
+      "name": "🏢 Setup — Register Issuer",
+      "item": [
+        { "name": "0. Health Check", "request": { "method": "GET", "url": "{{base}}/health" } },
+        { "name": "1. Register Issuer (with compliance)", "request": { "method": "POST", "url": "{{base}}/issuers",
+          "header": [{"key":"Content-Type","value":"application/json"}],
+          "body": {"mode":"raw","raw":"{\n  \"company_name\": \"TechVentures Inc.\",\n  \"wallet_address\": \"{{issuer_wallet}}\",\n  \"email\": \"founder@techventures.com\",\n  \"confirmed_no_other_platforms\": true,\n  \"acknowledged_lying_is_crime\": true\n}"} } },
+        { "name": "2. List Issuers", "request": { "method": "GET", "url": "{{base}}/issuers" } },
+        { "name": "3. Get Issuer #1", "request": { "method": "GET", "url": "{{base}}/issuers/1" } }
+      ]
+    },
+    {
+      "name": "✅ Scenario A — Success",
+      "item": [
+        { "name": "A1. Recharge Investor 5000 USDC", "request": { "method": "POST", "url": "{{base}}/test/recharge",
+          "header": [{"key":"Content-Type","value":"application/json"}],
+          "body": {"mode":"raw","raw":"{\"wallet_address\":\"{{investor_wallet}}\",\"amount_usdc\":5000}"} } },
+        { "name": "A2. Create Offering + Deploy Vault", "event":[{"listen":"test","script":{"exec":["var j=pm.response.json();if(j.offering_id)pm.variables.set('offering_id',j.offering_id);"]}}],
+          "request": { "method": "POST", "url": "{{base}}/offerings",
+          "header": [{"key":"Content-Type","value":"application/json"}],
+          "body": {"mode":"raw","raw":"{\n  \"issuer_id\": 1,\n  \"title\": \"TechStartup Series A\",\n  \"description\": \"AI-powered startup\",\n  \"min_goal_usdc\": 1000,\n  \"max_cap_usdc\": 10000,\n  \"issuer_wallet\": \"{{issuer_wallet}}\",\n  \"duration_days\": 1\n}"} } },
+        { "name": "A3. List Offerings", "request": { "method": "GET", "url": "{{base}}/offerings" } },
+        { "name": "A4. Get Offering Detail", "request": { "method": "GET", "url": "{{base}}/offerings/{{offering_id}}" } },
+        { "name": "A5. Invest 1500 USDC (with compliance)", "request": { "method": "POST", "url": "{{base}}/offerings/invest",
+          "header": [{"key":"Content-Type","value":"application/json"}],
+          "body": {"mode":"raw","raw":"{\n  \"offering_id\": {{offering_id}},\n  \"investor_wallet\": \"{{investor_wallet}}\",\n  \"amount_usdc\": 1500,\n  \"risk_acknowledgement_completed\": true,\n  \"offering_document_confirmed\": true,\n  \"subscription_agreement_signed\": true,\n  \"subscription_timestamp\": \"2025-02-21T14:30:00Z\"\n}"} } },
+        { "name": "A6. Check Vault Status", "request": { "method": "GET", "url": "{{base}}/offerings/{{offering_id}}/vault" } },
+        { "name": "A7. ⏩ Advance Time 130s", "request": { "method": "POST", "url": "{{base}}/test/advance-time",
+          "header": [{"key":"Content-Type","value":"application/json"}],
+          "body": {"mode":"raw","raw":"{\"seconds\":130}"} } },
+        { "name": "A8. 🚀 Release to Issuer", "request": { "method": "POST", "url": "{{base}}/offerings/release",
+          "header": [{"key":"Content-Type","value":"application/json"}],
+          "body": {"mode":"raw","raw":"{\n  \"offering_id\": {{offering_id}},\n  \"issuer_wallet\": \"{{issuer_wallet}}\"\n}"} } },
+        { "name": "A9. Check Offering (should be FUNDED)", "request": { "method": "GET", "url": "{{base}}/offerings/{{offering_id}}" } },
+        { "name": "A10. Event History", "request": { "method": "GET", "url": "{{base}}/offerings/{{offering_id}}/history" } }
+      ]
+    },
+    {
+      "name": "❌ Scenario B — Fail",
+      "item": [
+        { "name": "B1. Recharge", "request": { "method": "POST", "url": "{{base}}/test/recharge",
+          "header": [{"key":"Content-Type","value":"application/json"}],
+          "body": {"mode":"raw","raw":"{\"wallet_address\":\"{{investor_wallet}}\",\"amount_usdc\":3000}"} } },
+        { "name": "B2. Create Offering (goal=5000)", "event":[{"listen":"test","script":{"exec":["var j=pm.response.json();if(j.offering_id)pm.variables.set('offering_id',j.offering_id);"]}}],
+          "request": { "method": "POST", "url": "{{base}}/offerings",
+          "header": [{"key":"Content-Type","value":"application/json"}],
+          "body": {"mode":"raw","raw":"{\n  \"issuer_id\": 1,\n  \"title\": \"FailTest Startup\",\n  \"min_goal_usdc\": 5000,\n  \"max_cap_usdc\": 10000,\n  \"issuer_wallet\": \"{{issuer_wallet}}\",\n  \"duration_days\": 1\n}"} } },
+        { "name": "B3. Invest only 500", "request": { "method": "POST", "url": "{{base}}/offerings/invest",
+          "header": [{"key":"Content-Type","value":"application/json"}],
+          "body": {"mode":"raw","raw":"{\n  \"offering_id\": {{offering_id}},\n  \"investor_wallet\": \"{{investor_wallet}}\",\n  \"amount_usdc\": 500,\n  \"risk_acknowledgement_completed\": true,\n  \"offering_document_confirmed\": true,\n  \"subscription_agreement_signed\": true,\n  \"subscription_timestamp\": \"2025-02-21T14:30:00Z\"\n}"} } },
+        { "name": "B4. ⏩ Advance Time", "request": { "method": "POST", "url": "{{base}}/test/advance-time",
+          "header": [{"key":"Content-Type","value":"application/json"}],
+          "body": {"mode":"raw","raw":"{\"seconds\":130}"} } },
+        { "name": "B5. 💥 Fail Offering", "request": { "method": "POST", "url": "{{base}}/offerings/fail",
+          "header": [{"key":"Content-Type","value":"application/json"}],
+          "body": {"mode":"raw","raw":"{\"offering_id\": {{offering_id}}}"} } },
+        { "name": "B6. Check (should be FAILED)", "request": { "method": "GET", "url": "{{base}}/offerings/{{offering_id}}" } }
+      ]
+    },
+    {
+      "name": "↩ Scenario C — Refund",
+      "item": [
+        { "name": "C1. Create + Invest", "request": { "method": "POST", "url": "{{base}}/offerings/invest",
+          "header": [{"key":"Content-Type","value":"application/json"}],
+          "body": {"mode":"raw","raw":"{\n  \"offering_id\": 1,\n  \"investor_wallet\": \"{{investor_wallet}}\",\n  \"amount_usdc\": 800,\n  \"risk_acknowledgement_completed\": true,\n  \"offering_document_confirmed\": true,\n  \"subscription_agreement_signed\": true,\n  \"subscription_timestamp\": \"2025-02-21T14:30:00Z\"\n}"} } },
+        { "name": "C2. Refund (within 48hr)", "request": { "method": "POST", "url": "{{base}}/offerings/refund",
+          "header": [{"key":"Content-Type","value":"application/json"}],
+          "body": {"mode":"raw","raw":"{\n  \"offering_id\": 1,\n  \"investor_wallet\": \"{{investor_wallet}}\"\n}"} } }
+      ]
+    },
+    {
+      "name": "🚨 Scenario D — Emergency",
+      "item": [
+        { "name": "D1. Emergency Refund", "request": { "method": "POST", "url": "{{base}}/offerings/emergency-refund",
+          "header": [{"key":"Content-Type","value":"application/json"}],
+          "body": {"mode":"raw","raw":"{\n  \"offering_id\": 1,\n  \"investor_wallet\": \"{{investor_wallet}}\",\n  \"reason\": \"Suspected fraudulent identity documentation submitted by investor\"\n}"} } },
+        { "name": "D2. Amend Offering (reset 48hr windows)", "request": { "method": "POST", "url": "{{base}}/offerings/amend",
+          "header": [{"key":"Content-Type","value":"application/json"}],
+          "body": {"mode":"raw","raw":"{\"offering_id\": 1}"} } }
+      ]
+    }
+  ]
+}
