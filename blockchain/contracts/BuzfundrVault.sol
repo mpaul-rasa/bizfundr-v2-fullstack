@@ -22,12 +22,17 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
  *   5. Fail: only after deadline AND goal NOT reached
  *   6. Fail deadline: must fail within 5 business days (7 calendar) after offering deadline
  *   7. Amendment: admin can reset all refund windows when offering doc changes
+ * FEE MODEL:
+ *   - On successful release: 7% to platform fee wallet, 93% to issuer
+ *   - On fail/refund: 0% fee - all funds returned to investors
  */
 contract BuzfundrVault is Ownable, ReentrancyGuard {
     // ═══════════════════════ STATE ═══════════════════════
 
     IERC20 public immutable usdc;
     address public immutable issuer; // Founder wallet - set at deploy, cannot change
+    address public immutable platformFeeWallet;
+    uint256 public constant PLATFORM_FEE_PERCENT = 7;
 
     uint256 public minGoal; // Minimum USDC for successful release
     uint256 public maxCap; // Maximum total USDC accepted
@@ -57,10 +62,21 @@ contract BuzfundrVault is Ownable, ReentrancyGuard {
         uint256 totalAfter
     );
     event Refunded(address indexed investor, uint256 amount, string reason);
+    // event FundsReleased(
+    //     address indexed issuer,
+    //     uint256 amount,
+    //     uint256 investorCount
+    // );
     event FundsReleased(
         address indexed issuer,
-        uint256 amount,
+        uint256 issuerAmount,
+        uint256 platformFee,
         uint256 investorCount
+    );
+    event PlatformFeeCollected(
+        address indexed feeWallet,
+        uint256 feeAmount,
+        address indexed vault
     );
     event OfferingFailed(uint256 totalRefunded, uint256 investorCount);
     event EmergencyRefund(
@@ -113,6 +129,7 @@ contract BuzfundrVault is Ownable, ReentrancyGuard {
     constructor(
         address _usdc,
         address _issuer,
+        address _platformFeeWallet,
         uint256 _minGoal,
         uint256 _maxCap,
         uint256 _maxPerInvestor,
@@ -121,11 +138,13 @@ contract BuzfundrVault is Ownable, ReentrancyGuard {
     ) Ownable(msg.sender) {
         require(_usdc != address(0), "Invalid USDC");
         require(_issuer != address(0), "Invalid issuer");
+        require(_platformFeeWallet != address(0), "Invalid fee wallet");
         require(_minGoal > 0 && _maxCap >= _minGoal, "Invalid goal/cap");
         require(_maxPerInvestor > 0, "Invalid investor cap");
 
         usdc = IERC20(_usdc);
         issuer = _issuer;
+        platformFeeWallet = _platformFeeWallet;
         minGoal = _minGoal;
         maxCap = _maxCap;
         maxPerInvestor = _maxPerInvestor;
@@ -210,19 +229,50 @@ contract BuzfundrVault is Ownable, ReentrancyGuard {
      * @notice Issuer claims all funds after deadline + goal reached.
      * @dev Only the issuer wallet (set at deploy) can call this.
      */
+    // function releaseFunds() external nonReentrant onlyIssuer whenActive {
+    //     if (block.timestamp <= offeringDeadline) revert DeadlineNotReached();
+    //     if (totalDeposited < minGoal) revert GoalNotReached();
+
+    //     uint256 amount = totalDeposited;
+    //     uint256 count = investors.length;
+    //     isActive = false;
+    //     isReleased = true;
+
+    //     bool success = usdc.transfer(issuer, amount);
+    //     if (!success) revert TransferFailed();
+
+    //     emit FundsReleased(issuer, amount, count);
+    // }
+
+    /**
+     * @notice Release: 7% to platform, 93% to issuer
+     * Example: $10,000 raised -> $700 to platform, $9,300 to issuer
+     */
     function releaseFunds() external nonReentrant onlyIssuer whenActive {
         if (block.timestamp <= offeringDeadline) revert DeadlineNotReached();
         if (totalDeposited < minGoal) revert GoalNotReached();
 
-        uint256 amount = totalDeposited;
+        uint256 totalAmount = totalDeposited;
         uint256 count = investors.length;
+        uint256 platformFee = (totalAmount * PLATFORM_FEE_PERCENT) / 100;
+        uint256 issuerAmount = totalAmount - platformFee;
+
         isActive = false;
         isReleased = true;
 
-        bool success = usdc.transfer(issuer, amount);
-        if (!success) revert TransferFailed();
+        if (platformFee > 0) {
+            bool feeOk = usdc.transfer(platformFeeWallet, platformFee);
+            if (!feeOk) revert TransferFailed();
+            emit PlatformFeeCollected(
+                platformFeeWallet,
+                platformFee,
+                address(this)
+            );
+        }
 
-        emit FundsReleased(issuer, amount, count);
+        bool issuerOk = usdc.transfer(issuer, issuerAmount);
+        if (!issuerOk) revert TransferFailed();
+        emit FundsReleased(issuer, issuerAmount, platformFee, count);
     }
 
     // ═══════════════════════ FAIL (Admin only - within 5 business days) ═══════════════════════
@@ -352,6 +402,25 @@ contract BuzfundrVault is Ownable, ReentrancyGuard {
             block.timestamp > offeringDeadline,
             totalDeposited >= minGoal,
             issuer
+        );
+    }
+
+    function getFeeInfo()
+        external
+        view
+        returns (
+            address _feeWallet,
+            uint256 _feePercent,
+            uint256 _estimatedFee,
+            uint256 _estimatedIssuerAmount
+        )
+    {
+        uint256 fee = (totalDeposited * PLATFORM_FEE_PERCENT) / 100;
+        return (
+            platformFeeWallet,
+            PLATFORM_FEE_PERCENT,
+            fee,
+            totalDeposited - fee
         );
     }
 

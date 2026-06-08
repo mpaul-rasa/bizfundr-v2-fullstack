@@ -31,10 +31,14 @@ const VAULT_ABI = [
   "function issuer() view returns (address)",
   "event Deposited(address indexed investor, uint256 amount, uint256 refundDeadline, uint256 totalAfter)",
   "event Refunded(address indexed investor, uint256 amount, string reason)",
-  "event FundsReleased(address indexed issuer, uint256 amount, uint256 investorCount)",
+  // "event FundsReleased(address indexed issuer, uint256 amount, uint256 investorCount)",
+  "event FundsReleased(address indexed issuer, uint256 issuerAmount, uint256 platformFee, uint256 investorCount)",
   "event OfferingFailed(uint256 totalRefunded, uint256 investorCount)",
   "event EmergencyRefund(address indexed investor, uint256 amount, string reason)",
   "event AmendmentWindowTriggered(uint256 newDeadline, uint256 investorCount)",
+  "function platformFeeWallet() view returns (address)",
+  "function getFeeInfo() view returns (address,uint256,uint256,uint256)",
+  "event PlatformFeeCollected(address indexed feeWallet, uint256 feeAmount, address indexed vault)",
 ];
 
 const HARDHAT_KEYS = {
@@ -122,9 +126,14 @@ class VaultService {
       artifact.bytecode,
       admin,
     );
+
+    const platformFeeWallet =
+      process.env.PLATFORM_FEE_WALLET || this._newAdmin().address; //
+
     const vault = await factory.deploy(
       this.usdcAddress,
       issuerWallet,
+      platformFeeWallet,
       ethers.parseUnits(minGoalUsdc.toString(), 6),
       ethers.parseUnits(maxCapUsdc.toString(), 6),
       ethers.parseUnits((maxPerInvestor || 2500).toString(), 6),
@@ -152,6 +161,8 @@ class VaultService {
       max_cap_usdc: maxCapUsdc,
       max_per_investor: maxPerInvestor || 2500,
       duration_seconds: durationSeconds || 7776000,
+      platform_fee_wallet: platformFeeWallet,
+      platform_fee_percent: 7,
     };
   }
 
@@ -398,6 +409,7 @@ class VaultService {
       [vault.filters.OfferingFailed(), "fail"],
       [vault.filters.EmergencyRefund(), "emergency_refund"],
       [vault.filters.AmendmentWindowTriggered(), "amendment"],
+      [vault.filters.PlatformFeeCollected(), "platform_fee"],
     ];
     for (const [filter, type] of filters) {
       for (const e of await vault.queryFilter(filter, 0)) {
@@ -413,12 +425,21 @@ class VaultService {
           entry.investor = e.args[0];
           entry.amount_usdc = ethers.formatUnits(e.args[1], 6);
           entry.reason = e.args[2];
-        } else if (type === "release") {
+        }
+        // else if (type === "release") {
+        //   entry.issuer = e.args[0];
+        //   entry.amount_usdc = ethers.formatUnits(e.args[1], 6);
+        // }
+        else if (type === "release") {
           entry.issuer = e.args[0];
-          entry.amount_usdc = ethers.formatUnits(e.args[1], 6);
+          entry.issuer_amount_usdc = ethers.formatUnits(e.args[1], 6);
+          entry.platform_fee_usdc = ethers.formatUnits(e.args[2], 6);
         } else if (type === "fail") {
           entry.total_refunded_usdc = ethers.formatUnits(e.args[0], 6);
           entry.investor_count = Number(e.args[1]);
+        } else if (type === "platform_fee") {
+          entry.fee_wallet = e.args[0];
+          entry.fee_amount_usdc = ethers.formatUnits(e.args[1], 6);
         }
         events.push(entry);
       }
@@ -491,6 +512,26 @@ class VaultService {
       vault_abi: VAULT_ABI.filter((a) => !a.startsWith("event")),
       usdc_abi: USDC_ABI,
       usdc_address: this.usdcAddress,
+    };
+  }
+
+  async getFeeInfo(vaultAddress) {
+    const vault = this._roVault(vaultAddress);
+    const [feeWallet, feePercent, estimatedFee, estimatedIssuerAmount] =
+      await vault.getFeeInfo();
+    const feeWalletBalance = await this._roUsdc().balanceOf(feeWallet);
+
+    return {
+      success: true,
+      vault_address: vaultAddress,
+      fee_wallet: feeWallet,
+      fee_percent: Number(feePercent),
+      estimated_fee_usdc: ethers.formatUnits(estimatedFee, 6),
+      estimated_issuer_amount_usdc: ethers.formatUnits(
+        estimatedIssuerAmount,
+        6,
+      ),
+      fee_wallet_total_balance_usdc: ethers.formatUnits(feeWalletBalance, 6),
     };
   }
 }

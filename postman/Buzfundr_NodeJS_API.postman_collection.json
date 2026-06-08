@@ -1,290 +1,891 @@
 {
   "info": {
-    "name": "Buzfundr Node.js Blockchain API — Complete",
-    "description": "Direct Node.js API (Port 3001). All scenarios automated with auto-save variables.\n\n## Setup\n1. Start Hardhat: npx hardhat node\n2. Deploy: npx hardhat run scripts/deploy.js --network localhost\n3. Copy USDC to .env, start: npm start\n4. Import this collection + environment\n5. Run scenarios in order\n\n## Auto-Save\nVault addresses and tx hashes are auto-saved to environment variables.",
+    "name": "Buzfundr Node.js Blockchain API — Complete (with 7% Fee)",
+    "description": "Direct Node.js API (Port 3001). All scenarios automated with auto-save variables.\n\n## Setup\n1. Start Hardhat: npx hardhat node\n2. Deploy: npx hardhat run scripts/deploy.js --network localhost\n3. Copy USDC to .env, set PLATFORM_FEE_WALLET, start: npm start\n4. Import this collection + environment\n5. Run scenarios in order\n\n## Fee Model\nOn successful release: 7% to platform fee wallet, 93% to issuer.\nOn fail/refund: 0% fee.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
-  "auth": { "type": "apikey", "apikey": [{ "key": "key", "value": "X-API-Key" }, { "key": "value", "value": "{{api_key}}" }, { "key": "in", "value": "header" }] },
-  "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
-    "if(pm.response.code < 300) {",
-    "  try {",
-    "    var j = pm.response.json();",
-    "    if(j.vault_address) pm.environment.set('vault_address', j.vault_address);",
-    "    if(j.tx_hash) pm.environment.set('last_tx', j.tx_hash);",
-    "    pm.test('Success', function(){ pm.expect(j.success).to.be.true; });",
-    "  } catch(e) {}",
-    "}"
-  ]}}],
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      {
+        "key": "key",
+        "value": "X-API-Key"
+      },
+      {
+        "key": "value",
+        "value": "{{api_key}}"
+      },
+      {
+        "key": "in",
+        "value": "header"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if(pm.response.code < 300) {",
+          "  try {",
+          "    var j = pm.response.json();",
+          "    if(j.vault_address) pm.environment.set('vault_address', j.vault_address);",
+          "    if(j.tx_hash) pm.environment.set('last_tx', j.tx_hash);",
+          "    pm.test('Success', function(){ pm.expect(j.success).to.be.true; });",
+          "  } catch(e) {}",
+          "}"
+        ]
+      }
+    }
+  ],
   "item": [
     {
       "name": "🏥 Health & Info",
       "item": [
-        { "name": "Health Check", "request": { "auth":{"type":"noauth"}, "method": "GET", "url": "{{base}}/health" } },
-        { "name": "Get Contract ABI (for frontend)", "request": { "auth":{"type":"noauth"}, "method": "GET", "url": "{{base}}/abi" } },
-        { "name": "Get Blockchain Time", "request": { "method": "GET", "url": "{{base}}/time" } },
-        { "name": "Auth Test (should 401)", "request": { "auth":{"type":"noauth"}, "method": "GET", "url": "{{base}}/vaults" } }
-      ]
-    },
-    {
-      "name": "✅ SCENARIO A — Happy Path (Invest → Release)",
-      "description": "Goal reached → Issuer gets all funds.\nRun A1→A12 in order.",
-      "item": [
-        { "name": "A1. Recharge Investor1 with 5000 USDC",
-          "event": [{"listen":"test","script":{"exec":["var j=pm.response.json(); pm.test('Recharged', ()=> pm.expect(j.success).to.be.true);"]}}],
-          "request": { "method": "POST", "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\n  \"wallet_address\": \"{{investor1}}\",\n  \"amount_usdc\": 5000\n}"},
-          "url": "{{base}}/recharge" }
+        {
+          "name": "Health Check",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "url": "{{base}}/health"
+          }
         },
-        { "name": "A2. Check Investor1 Balance (should be 5000)",
-          "request": { "method": "GET", "url": "{{base}}/wallet/{{investor1}}" }
+        {
+          "name": "Get Contract ABI (for frontend)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "url": "{{base}}/abi"
+          }
         },
-        { "name": "A3. Deploy Vault (goal=1000, cap=10000, deadline=120s)",
-          "event": [{"listen":"test","script":{"exec":[
-            "var j=pm.response.json();",
-            "if(j.vault_address) {",
-            "  pm.environment.set('vault_address', j.vault_address);",
-            "  console.log('Saved vault:', j.vault_address);",
-            "}",
-            "pm.test('Vault deployed', ()=> pm.expect(j.success).to.be.true);"
-          ]}}],
-          "request": { "method": "POST", "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\n  \"min_goal_usdc\": 1000,\n  \"max_cap_usdc\": 10000,\n  \"max_per_investor\": 2500,\n  \"duration_seconds\": 120,\n  \"refund_window_seconds\": 60,\n  \"issuer_wallet\": \"{{issuer}}\"\n}"},
-          "url": "{{base}}/deploy-vault" }
+        {
+          "name": "Get Blockchain Time",
+          "request": {
+            "method": "GET",
+            "url": "{{base}}/time"
+          }
         },
-        { "name": "A4. Check Vault Status (should be active, 0 raised)",
-          "request": { "method": "GET", "url": "{{base}}/vault/{{vault_address}}" }
-        },
-        { "name": "A5. Invest 1500 USDC (Investor1)",
-          "event": [{"listen":"test","script":{"exec":[
-            "var j=pm.response.json();",
-            "pm.test('Invested', ()=> pm.expect(j.success).to.be.true);",
-            "if(j.tx_hash) pm.environment.set('invest_tx', j.tx_hash);"
-          ]}}],
-          "request": { "method": "POST", "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\n  \"vault_address\": \"{{vault_address}}\",\n  \"investor_wallet\": \"{{investor1}}\",\n  \"amount_usdc\": 1500,\n  \"risk_acknowledgement_completed\": true,\n  \"offering_document_confirmed\": true,\n  \"subscription_agreement_signed\": true,\n  \"subscription_timestamp\": \"2025-03-01T10:00:00Z\"\n}"},
-          "url": "{{base}}/invest" }
-        },
-        { "name": "A6. Check Investor1 Info (deposit=1500, refund eligible)",
-          "request": { "method": "GET", "url": "{{base}}/vault/{{vault_address}}/investor/{{investor1}}" }
-        },
-        { "name": "A7. Check Vault (total=1500, goal_reached=true)",
-          "event": [{"listen":"test","script":{"exec":[
-            "var j=pm.response.json();",
-            "pm.test('Goal reached', ()=> pm.expect(j.goal_reached).to.be.true);",
-            "pm.test('Total 1500', ()=> pm.expect(j.total_deposited_usdc).to.eql('1500.0'));"
-          ]}}],
-          "request": { "method": "GET", "url": "{{base}}/vault/{{vault_address}}" }
-        },
-        { "name": "A8. ⏩ Advance Time 130s (past 120s deadline)",
-          "request": { "method": "POST", "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\n  \"seconds\": 130\n}"},
-          "url": "{{base}}/time/advance" }
-        },
-        { "name": "A9. Check Vault (deadline_passed=true)",
-          "event": [{"listen":"test","script":{"exec":[
-            "var j=pm.response.json();",
-            "pm.test('Deadline passed', ()=> pm.expect(j.deadline_passed).to.be.true);",
-            "pm.test('Status ready_to_release', ()=> pm.expect(j.status).to.eql('ready_to_release'));"
-          ]}}],
-          "request": { "method": "GET", "url": "{{base}}/vault/{{vault_address}}" }
-        },
-        { "name": "A10. 🚀 Release Funds to Issuer",
-          "event": [{"listen":"test","script":{"exec":[
-            "var j=pm.response.json();",
-            "pm.test('Released', ()=> pm.expect(j.success).to.be.true);",
-            "pm.test('Amount 1500', ()=> pm.expect(j.amount_released_usdc).to.eql('1500.0'));"
-          ]}}],
-          "request": { "method": "POST", "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\n  \"vault_address\": \"{{vault_address}}\",\n  \"issuer_wallet\": \"{{issuer}}\"\n}"},
-          "url": "{{base}}/release" }
-        },
-        { "name": "A11. Check Issuer Balance (received 1500 USDC)",
-          "request": { "method": "GET", "url": "{{base}}/wallet/{{issuer}}" }
-        },
-        { "name": "A12. Check Vault (status=released, CLOSED)",
-          "event": [{"listen":"test","script":{"exec":[
-            "var j=pm.response.json();",
-            "pm.test('Released', ()=> pm.expect(j.is_released).to.be.true);",
-            "pm.test('Closed', ()=> pm.expect(j.is_active).to.be.false);"
-          ]}}],
-          "request": { "method": "GET", "url": "{{base}}/vault/{{vault_address}}" }
-        },
-        { "name": "A13. Full Event History",
-          "request": { "method": "GET", "url": "{{base}}/vault/{{vault_address}}/history" }
+        {
+          "name": "Auth Test (should 401)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "url": "{{base}}/vaults"
+          }
         }
       ]
     },
     {
-      "name": "❌ SCENARIO B — Fail Path (Goal NOT reached → Refund All)",
-      "description": "Goal too high, not enough investors.\nRun B1→B10 in order.",
+      "name": "✅ SCENARIO A — Happy Path with 7% Fee (Invest → Release → Fee Split)",
+      "description": "Goal reached → 93% to issuer, 7% to fee wallet.\n\nMath: 1500 USDC invested → 105 fee (7%) → 1395 to issuer (93%).\nRun A1→A15 in order.",
       "item": [
-        { "name": "B1. Recharge Investor1",
-          "request": { "method": "POST", "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\n  \"wallet_address\": \"{{investor1}}\",\n  \"amount_usdc\": 3000\n}"},
-          "url": "{{base}}/recharge" }
+        {
+          "name": "A1. Recharge Investor1 with 5000 USDC",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var j=pm.response.json(); pm.test('Recharged', ()=> pm.expect(j.success).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"wallet_address\": \"{{investor1}}\",\n  \"amount_usdc\": 5000\n}"
+            },
+            "url": "{{base}}/recharge"
+          }
         },
-        { "name": "B2. Deploy Vault (goal=5000 — deliberately high)",
-          "event": [{"listen":"test","script":{"exec":["var j=pm.response.json();if(j.vault_address)pm.environment.set('vault_address',j.vault_address);"]}}],
-          "request": { "method": "POST", "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\n  \"min_goal_usdc\": 5000,\n  \"max_cap_usdc\": 10000,\n  \"max_per_investor\": 2500,\n  \"duration_seconds\": 120,\n  \"refund_window_seconds\": 60,\n  \"issuer_wallet\": \"{{issuer}}\"\n}"},
-          "url": "{{base}}/deploy-vault" }
+        {
+          "name": "A2. Check Investor1 Balance",
+          "request": {
+            "method": "GET",
+            "url": "{{base}}/wallet/{{investor1}}"
+          }
         },
-        { "name": "B3. Invest only 500 USDC (way below 5000 goal)",
-          "request": { "method": "POST", "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\n  \"vault_address\": \"{{vault_address}}\",\n  \"investor_wallet\": \"{{investor1}}\",\n  \"amount_usdc\": 500,\n  \"risk_acknowledgement_completed\": true,\n  \"offering_document_confirmed\": true,\n  \"subscription_agreement_signed\": true,\n  \"subscription_timestamp\": \"2025-03-01T10:00:00Z\"\n}"},
-          "url": "{{base}}/invest" }
+        {
+          "name": "A3. Check Fee Wallet Balance BEFORE (should be 0 or previous)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var j=pm.response.json();",
+                  "pm.environment.set('fee_balance_before', j.usdc);",
+                  "console.log('Fee wallet balance before:', j.usdc);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{base}}/wallet/{{fee_wallet}}"
+          }
         },
-        { "name": "B4. Check Vault (500 raised, goal NOT reached)",
-          "event": [{"listen":"test","script":{"exec":[
-            "var j=pm.response.json();",
-            "pm.test('Goal NOT reached', ()=> pm.expect(j.goal_reached).to.be.false);"
-          ]}}],
-          "request": { "method": "GET", "url": "{{base}}/vault/{{vault_address}}" }
+        {
+          "name": "A4. Deploy Vault (goal=1000, cap=10000, deadline=120s)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var j=pm.response.json();",
+                  "if(j.vault_address) {",
+                  "  pm.environment.set('vault_address', j.vault_address);",
+                  "  console.log('Saved vault:', j.vault_address);",
+                  "}",
+                  "pm.test('Vault deployed', ()=> pm.expect(j.success).to.be.true);",
+                  "pm.test('Fee wallet set', ()=> pm.expect(j.platform_fee_wallet).to.not.be.undefined);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"min_goal_usdc\": 1000,\n  \"max_cap_usdc\": 10000,\n  \"max_per_investor\": 2500,\n  \"duration_seconds\": 120,\n  \"refund_window_seconds\": 60,\n  \"issuer_wallet\": \"{{issuer}}\"\n}"
+            },
+            "url": "{{base}}/deploy-vault"
+          }
         },
-        { "name": "B5. ⏩ Advance Time 130s",
-          "request": { "method": "POST", "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\n  \"seconds\": 130\n}"},
-          "url": "{{base}}/time/advance" }
+        {
+          "name": "A5. Check Fee Info (estimated fee before invest = 0)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var j=pm.response.json();",
+                  "pm.test('Fee percent is 7', ()=> pm.expect(j.fee_percent).to.eql(7));",
+                  "pm.test('Fee wallet matches', ()=> pm.expect(j.fee_wallet.toLowerCase()).to.eql(pm.environment.get('fee_wallet').toLowerCase()));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{base}}/vault/{{vault_address}}/fees"
+          }
         },
-        { "name": "B6. Check Vault (ready_to_fail)",
-          "event": [{"listen":"test","script":{"exec":[
-            "var j=pm.response.json();",
-            "pm.test('Ready to fail', ()=> pm.expect(j.status).to.eql('ready_to_fail'));"
-          ]}}],
-          "request": { "method": "GET", "url": "{{base}}/vault/{{vault_address}}" }
+        {
+          "name": "A6. Invest 1500 USDC (Investor1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var j=pm.response.json();",
+                  "pm.test('Invested', ()=> pm.expect(j.success).to.be.true);",
+                  "if(j.tx_hash) pm.environment.set('invest_tx', j.tx_hash);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"vault_address\": \"{{vault_address}}\",\n  \"investor_wallet\": \"{{investor1}}\",\n  \"amount_usdc\": 1500,\n  \"risk_acknowledgement_completed\": true,\n  \"offering_document_confirmed\": true,\n  \"subscription_agreement_signed\": true,\n  \"subscription_timestamp\": \"2025-03-01T10:00:00Z\"\n}"
+            },
+            "url": "{{base}}/invest"
+          }
         },
-        { "name": "B7. 💥 Fail Offering (bulk refund all)",
-          "event": [{"listen":"test","script":{"exec":[
-            "var j=pm.response.json();",
-            "pm.test('Failed', ()=> pm.expect(j.success).to.be.true);",
-            "pm.test('1 investor refunded', ()=> pm.expect(j.investors_refunded).to.eql(1));"
-          ]}}],
-          "request": { "method": "POST", "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\n  \"vault_address\": \"{{vault_address}}\"\n}"},
-          "url": "{{base}}/fail-offering" }
+        {
+          "name": "A7. Check Fee Info (estimated: fee=105, issuer=1395)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var j=pm.response.json();",
+                  "pm.test('Estimated fee is 105', ()=> pm.expect(j.estimated_fee_usdc).to.eql('105.0'));",
+                  "pm.test('Estimated issuer is 1395', ()=> pm.expect(j.estimated_issuer_amount_usdc).to.eql('1395.0'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{base}}/vault/{{vault_address}}/fees"
+          }
         },
-        { "name": "B8. Check Investor1 Wallet (500 USDC returned)",
-          "request": { "method": "GET", "url": "{{base}}/wallet/{{investor1}}" }
+        {
+          "name": "A8. Check Vault (total=1500, goal_reached=true)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var j=pm.response.json();",
+                  "pm.test('Goal reached', ()=> pm.expect(j.goal_reached).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{base}}/vault/{{vault_address}}"
+          }
         },
-        { "name": "B9. Check Vault (status=failed, CLOSED)",
-          "event": [{"listen":"test","script":{"exec":[
-            "var j=pm.response.json();",
-            "pm.test('Failed', ()=> pm.expect(j.is_failed).to.be.true);",
-            "pm.test('Closed', ()=> pm.expect(j.is_active).to.be.false);"
-          ]}}],
-          "request": { "method": "GET", "url": "{{base}}/vault/{{vault_address}}" }
+        {
+          "name": "A9. ⏩ Advance Time 130s (past 120s deadline)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"seconds\": 130\n}"
+            },
+            "url": "{{base}}/time/advance"
+          }
         },
-        { "name": "B10. Event History",
-          "request": { "method": "GET", "url": "{{base}}/vault/{{vault_address}}/history" }
+        {
+          "name": "A10. Check Vault (ready_to_release)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var j=pm.response.json();",
+                  "pm.test('Deadline passed', ()=> pm.expect(j.deadline_passed).to.be.true);",
+                  "pm.test('Ready to release', ()=> pm.expect(j.status).to.eql('ready_to_release'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{base}}/vault/{{vault_address}}"
+          }
+        },
+        {
+          "name": "A11. 🚀 Release Funds (7% fee + 93% to issuer)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var j=pm.response.json();",
+                  "pm.test('Released', ()=> pm.expect(j.success).to.be.true);",
+                  "console.log('Release response:', JSON.stringify(j));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"vault_address\": \"{{vault_address}}\",\n  \"issuer_wallet\": \"{{issuer}}\"\n}"
+            },
+            "url": "{{base}}/release"
+          }
+        },
+        {
+          "name": "A12. 💰 Check Fee Wallet (should have received 105 USDC)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var j=pm.response.json();",
+                  "console.log('Fee wallet balance after release:', j.usdc);",
+                  "pm.test('Fee wallet has USDC', ()=> pm.expect(parseFloat(j.usdc)).to.be.above(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{base}}/wallet/{{fee_wallet}}"
+          }
+        },
+        {
+          "name": "A13. Check Issuer Wallet (should have received 1395 USDC)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var j=pm.response.json();",
+                  "console.log('Issuer balance after release:', j.usdc);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{base}}/wallet/{{issuer}}"
+          }
+        },
+        {
+          "name": "A14. Check Vault (status=released, CLOSED)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var j=pm.response.json();",
+                  "pm.test('Released', ()=> pm.expect(j.is_released).to.be.true);",
+                  "pm.test('Closed', ()=> pm.expect(j.is_active).to.be.false);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{base}}/vault/{{vault_address}}"
+          }
+        },
+        {
+          "name": "A15. Event History (should show PlatformFeeCollected + FundsReleased)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var j=pm.response.json();",
+                  "var types = j.history.map(e => e.type);",
+                  "pm.test('Has deposit event', ()=> pm.expect(types).to.include('deposit'));",
+                  "pm.test('Has release event', ()=> pm.expect(types).to.include('release'));",
+                  "console.log('Event types:', types.join(', '));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{base}}/vault/{{vault_address}}/history"
+          }
         }
       ]
     },
     {
-      "name": "↩ SCENARIO C — Refund Within 48hrs",
-      "description": "Investor invests then immediately refunds.\nRun C1→C7 in order.",
+      "name": "❌ SCENARIO B — Fail Path (NO fee charged on failure)",
+      "description": "Goal NOT reached → 100% refunded to investors. Zero fee.\nRun B1→B10 in order.",
       "item": [
-        { "name": "C1. Recharge Investor1",
-          "request": { "method": "POST", "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\n  \"wallet_address\": \"{{investor1}}\",\n  \"amount_usdc\": 3000\n}"},
-          "url": "{{base}}/recharge" }
+        {
+          "name": "B1. Recharge Investor1",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"wallet_address\": \"{{investor1}}\",\n  \"amount_usdc\": 3000\n}"
+            },
+            "url": "{{base}}/recharge"
+          }
         },
-        { "name": "C2. Deploy Vault (refund_window=120s for testing)",
-          "event": [{"listen":"test","script":{"exec":["var j=pm.response.json();if(j.vault_address)pm.environment.set('vault_address',j.vault_address);"]}}],
-          "request": { "method": "POST", "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\n  \"min_goal_usdc\": 1000,\n  \"max_cap_usdc\": 5000,\n  \"max_per_investor\": 2500,\n  \"duration_seconds\": 300,\n  \"refund_window_seconds\": 120,\n  \"issuer_wallet\": \"{{issuer}}\"\n}"},
-          "url": "{{base}}/deploy-vault" }
+        {
+          "name": "B2. Check Fee Wallet Balance BEFORE",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.environment.set('fee_before_fail', pm.response.json().usdc);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{base}}/wallet/{{fee_wallet}}"
+          }
         },
-        { "name": "C3. Invest 800 USDC",
-          "request": { "method": "POST", "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\n  \"vault_address\": \"{{vault_address}}\",\n  \"investor_wallet\": \"{{investor1}}\",\n  \"amount_usdc\": 800,\n  \"risk_acknowledgement_completed\": true,\n  \"offering_document_confirmed\": true,\n  \"subscription_agreement_signed\": true,\n  \"subscription_timestamp\": \"2025-03-01T10:00:00Z\"\n}"},
-          "url": "{{base}}/invest" }
+        {
+          "name": "B3. Deploy Vault (goal=5000 — deliberately high)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var j=pm.response.json();if(j.vault_address)pm.environment.set('vault_address',j.vault_address);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"min_goal_usdc\": 5000,\n  \"max_cap_usdc\": 10000,\n  \"max_per_investor\": 2500,\n  \"duration_seconds\": 120,\n  \"refund_window_seconds\": 60,\n  \"issuer_wallet\": \"{{issuer}}\"\n}"
+            },
+            "url": "{{base}}/deploy-vault"
+          }
         },
-        { "name": "C4. Check Refund Eligibility (should be TRUE)",
-          "event": [{"listen":"test","script":{"exec":[
-            "var j=pm.response.json();",
-            "pm.test('Refund eligible', ()=> pm.expect(j.refund_eligible).to.be.true);"
-          ]}}],
-          "request": { "method": "GET", "url": "{{base}}/vault/{{vault_address}}/investor/{{investor1}}" }
+        {
+          "name": "B4. Invest only 500 USDC (way below 5000 goal)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"vault_address\": \"{{vault_address}}\",\n  \"investor_wallet\": \"{{investor1}}\",\n  \"amount_usdc\": 500,\n  \"risk_acknowledgement_completed\": true,\n  \"offering_document_confirmed\": true,\n  \"subscription_agreement_signed\": true,\n  \"subscription_timestamp\": \"2025-03-01T10:00:00Z\"\n}"
+            },
+            "url": "{{base}}/invest"
+          }
         },
-        { "name": "C5. Refund (within window)",
-          "event": [{"listen":"test","script":{"exec":[
-            "var j=pm.response.json();",
-            "pm.test('Refunded', ()=> pm.expect(j.success).to.be.true);",
-            "pm.test('Amount 800', ()=> pm.expect(j.amount_refunded_usdc).to.eql('800.0'));"
-          ]}}],
-          "request": { "method": "POST", "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\n  \"vault_address\": \"{{vault_address}}\",\n  \"investor_wallet\": \"{{investor1}}\"\n}"},
-          "url": "{{base}}/refund" }
+        {
+          "name": "B5. ⏩ Advance Time 130s",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"seconds\": 130\n}"
+            },
+            "url": "{{base}}/time/advance"
+          }
         },
-        { "name": "C6. Investor Wallet (800 returned)",
-          "request": { "method": "GET", "url": "{{base}}/wallet/{{investor1}}" }
+        {
+          "name": "B6. Check Vault (ready_to_fail)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var j=pm.response.json();",
+                  "pm.test('Ready to fail', ()=> pm.expect(j.status).to.eql('ready_to_fail'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{base}}/vault/{{vault_address}}"
+          }
         },
-        { "name": "C7. Vault (balance=0)",
-          "event": [{"listen":"test","script":{"exec":[
-            "var j=pm.response.json();",
-            "pm.test('Empty vault', ()=> pm.expect(j.total_deposited_usdc).to.eql('0.0'));"
-          ]}}],
-          "request": { "method": "GET", "url": "{{base}}/vault/{{vault_address}}" }
+        {
+          "name": "B7. 💥 Fail Offering (bulk refund — ZERO fee)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var j=pm.response.json();",
+                  "pm.test('Failed', ()=> pm.expect(j.success).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"vault_address\": \"{{vault_address}}\"\n}"
+            },
+            "url": "{{base}}/fail-offering"
+          }
+        },
+        {
+          "name": "B8. Check Fee Wallet (should be UNCHANGED — no fee on failure)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var j=pm.response.json();",
+                  "var before = pm.environment.get('fee_before_fail');",
+                  "pm.test('Fee wallet unchanged', ()=> pm.expect(j.usdc).to.eql(before));",
+                  "console.log('Fee wallet before:', before, 'after:', j.usdc);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{base}}/wallet/{{fee_wallet}}"
+          }
+        },
+        {
+          "name": "B9. Check Investor Wallet (500 USDC fully returned)",
+          "request": {
+            "method": "GET",
+            "url": "{{base}}/wallet/{{investor1}}"
+          }
+        },
+        {
+          "name": "B10. Check Vault (status=failed, CLOSED)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var j=pm.response.json();",
+                  "pm.test('Failed', ()=> pm.expect(j.is_failed).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{base}}/vault/{{vault_address}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "↩ SCENARIO C — Refund Within 48hrs (NO fee)",
+      "description": "Invest then immediate refund. Zero fee.\nRun C1→C7 in order.",
+      "item": [
+        {
+          "name": "C1. Recharge Investor1",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"wallet_address\": \"{{investor1}}\",\n  \"amount_usdc\": 3000\n}"
+            },
+            "url": "{{base}}/recharge"
+          }
+        },
+        {
+          "name": "C2. Deploy Vault (refund_window=120s)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var j=pm.response.json();if(j.vault_address)pm.environment.set('vault_address',j.vault_address);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"min_goal_usdc\": 1000,\n  \"max_cap_usdc\": 5000,\n  \"max_per_investor\": 2500,\n  \"duration_seconds\": 300,\n  \"refund_window_seconds\": 120,\n  \"issuer_wallet\": \"{{issuer}}\"\n}"
+            },
+            "url": "{{base}}/deploy-vault"
+          }
+        },
+        {
+          "name": "C3. Invest 800 USDC",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"vault_address\": \"{{vault_address}}\",\n  \"investor_wallet\": \"{{investor1}}\",\n  \"amount_usdc\": 800,\n  \"risk_acknowledgement_completed\": true,\n  \"offering_document_confirmed\": true,\n  \"subscription_agreement_signed\": true,\n  \"subscription_timestamp\": \"2025-03-01T10:00:00Z\"\n}"
+            },
+            "url": "{{base}}/invest"
+          }
+        },
+        {
+          "name": "C4. Check Refund Eligibility (TRUE)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Refund eligible', ()=> pm.expect(pm.response.json().refund_eligible).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{base}}/vault/{{vault_address}}/investor/{{investor1}}"
+          }
+        },
+        {
+          "name": "C5. Refund (within window — ZERO fee)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var j=pm.response.json();",
+                  "pm.test('Refunded', ()=> pm.expect(j.success).to.be.true);",
+                  "pm.test('Full amount 800', ()=> pm.expect(j.amount_refunded_usdc).to.eql('800.0'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"vault_address\": \"{{vault_address}}\",\n  \"investor_wallet\": \"{{investor1}}\"\n}"
+            },
+            "url": "{{base}}/refund"
+          }
+        },
+        {
+          "name": "C6. Investor Wallet (full 800 returned)",
+          "request": {
+            "method": "GET",
+            "url": "{{base}}/wallet/{{investor1}}"
+          }
+        },
+        {
+          "name": "C7. Vault (balance=0)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Empty', ()=> pm.expect(pm.response.json().total_deposited_usdc).to.eql('0.0'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{base}}/vault/{{vault_address}}"
+          }
         }
       ]
     },
     {
       "name": "🚫 SCENARIO D — Refund REJECTED (48hrs expired)",
-      "description": "Investor tries to refund AFTER 48hr window.\nRun D1→D5 in order.",
+      "description": "Refund after window expired.\nRun D1→D5 in order.",
       "item": [
-        { "name": "D1. Deploy + Invest (reuse previous or setup new)",
-          "event": [{"listen":"test","script":{"exec":["var j=pm.response.json();if(j.vault_address)pm.environment.set('vault_address',j.vault_address);"]}}],
-          "request": { "method": "POST", "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\n  \"min_goal_usdc\": 1000,\n  \"max_cap_usdc\": 5000,\n  \"max_per_investor\": 2500,\n  \"duration_seconds\": 300,\n  \"refund_window_seconds\": 60,\n  \"issuer_wallet\": \"{{issuer}}\"\n}"},
-          "url": "{{base}}/deploy-vault" }
+        {
+          "name": "D1. Deploy Vault (refund_window=60s)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var j=pm.response.json();if(j.vault_address)pm.environment.set('vault_address',j.vault_address);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"min_goal_usdc\": 1000,\n  \"max_cap_usdc\": 5000,\n  \"max_per_investor\": 2500,\n  \"duration_seconds\": 300,\n  \"refund_window_seconds\": 60,\n  \"issuer_wallet\": \"{{issuer}}\"\n}"
+            },
+            "url": "{{base}}/deploy-vault"
+          }
         },
-        { "name": "D2. Invest 1000",
-          "request": { "method": "POST", "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\n  \"vault_address\": \"{{vault_address}}\",\n  \"investor_wallet\": \"{{investor1}}\",\n  \"amount_usdc\": 1000,\n  \"risk_acknowledgement_completed\": true,\n  \"offering_document_confirmed\": true,\n  \"subscription_agreement_signed\": true,\n  \"subscription_timestamp\": \"2025-03-01T10:00:00Z\"\n}"},
-          "url": "{{base}}/invest" }
+        {
+          "name": "D2. Invest 1000",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"vault_address\": \"{{vault_address}}\",\n  \"investor_wallet\": \"{{investor1}}\",\n  \"amount_usdc\": 1000,\n  \"risk_acknowledgement_completed\": true,\n  \"offering_document_confirmed\": true,\n  \"subscription_agreement_signed\": true,\n  \"subscription_timestamp\": \"2025-03-01T10:00:00Z\"\n}"
+            },
+            "url": "{{base}}/invest"
+          }
         },
-        { "name": "D3. ⏩ Skip 70s (past 60s refund window)",
-          "request": { "method": "POST", "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\n  \"seconds\": 70\n}"},
-          "url": "{{base}}/time/advance" }
+        {
+          "name": "D3. ⏩ Skip 70s (past 60s refund window)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"seconds\": 70\n}"
+            },
+            "url": "{{base}}/time/advance"
+          }
         },
-        { "name": "D4. Check Refund (should be FALSE now)",
-          "event": [{"listen":"test","script":{"exec":[
-            "var j=pm.response.json();",
-            "pm.test('Refund NOT eligible', ()=> pm.expect(j.refund_eligible).to.be.false);"
-          ]}}],
-          "request": { "method": "GET", "url": "{{base}}/vault/{{vault_address}}/investor/{{investor1}}" }
+        {
+          "name": "D4. Check Refund (should be FALSE)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Not eligible', ()=> pm.expect(pm.response.json().refund_eligible).to.be.false);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{base}}/vault/{{vault_address}}/investor/{{investor1}}"
+          }
         },
-        { "name": "D5. Try Refund (should FAIL with REFUND_WINDOW_EXPIRED)",
-          "event": [{"listen":"test","script":{"exec":[
-            "pm.test('Status 400', ()=> pm.expect(pm.response.code).to.eql(400));",
-            "var j=pm.response.json();",
-            "pm.test('Correct error', ()=> pm.expect(j.error_code).to.eql('REFUND_WINDOW_EXPIRED'));"
-          ]}}],
-          "request": { "method": "POST", "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\n  \"vault_address\": \"{{vault_address}}\",\n  \"investor_wallet\": \"{{investor1}}\"\n}"},
-          "url": "{{base}}/refund" }
+        {
+          "name": "D5. Try Refund (REJECTED — REFUND_WINDOW_EXPIRED)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', ()=> pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('Correct error', ()=> pm.expect(pm.response.json().error_code).to.eql('REFUND_WINDOW_EXPIRED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"vault_address\": \"{{vault_address}}\",\n  \"investor_wallet\": \"{{investor1}}\"\n}"
+            },
+            "url": "{{base}}/refund"
+          }
         }
       ]
     },
     {
       "name": "🚨 SCENARIO E — Emergency Refund (Admin bypass)",
-      "description": "Admin refunds investor AFTER 48hr window for fraud.\nRun after Scenario D.",
+      "description": "Admin refunds investor AFTER 48hr window for fraud.\nRun after Scenario D (uses same vault).",
       "item": [
-        { "name": "E1. Emergency Refund (bypasses 48hr)",
-          "event": [{"listen":"test","script":{"exec":[
-            "var j=pm.response.json();",
-            "pm.test('Emergency refunded', ()=> pm.expect(j.success).to.be.true);"
-          ]}}],
-          "request": { "method": "POST", "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\n  \"vault_address\": \"{{vault_address}}\",\n  \"investor_wallet\": \"{{investor1}}\",\n  \"reason\": \"Suspected fraudulent identity documentation submitted by this investor during KYC verification\"\n}"},
-          "url": "{{base}}/emergency-refund" }
+        {
+          "name": "E1. Emergency Refund (bypasses 48hr — ZERO fee)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Refunded', ()=> pm.expect(pm.response.json().success).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"vault_address\": \"{{vault_address}}\",\n  \"investor_wallet\": \"{{investor1}}\",\n  \"reason\": \"Suspected fraudulent identity documentation submitted by this investor during KYC verification\"\n}"
+            },
+            "url": "{{base}}/emergency-refund"
+          }
         },
-        { "name": "E2. Check Vault (investor removed)",
-          "request": { "method": "GET", "url": "{{base}}/vault/{{vault_address}}" }
+        {
+          "name": "E2. Check Vault (investor removed)",
+          "request": {
+            "method": "GET",
+            "url": "{{base}}/vault/{{vault_address}}"
+          }
         },
-        { "name": "E3. Event History (shows emergency_refund event)",
-          "request": { "method": "GET", "url": "{{base}}/vault/{{vault_address}}/history" }
+        {
+          "name": "E3. Event History (shows emergency_refund)",
+          "request": {
+            "method": "GET",
+            "url": "{{base}}/vault/{{vault_address}}/history"
+          }
         }
       ]
     },
@@ -292,37 +893,110 @@
       "name": "📄 SCENARIO F — Amend Offering Document",
       "description": "Admin resets all refund windows when issuer changes their doc.\nRun F1→F5 in order.",
       "item": [
-        { "name": "F1. Deploy + Invest",
-          "event": [{"listen":"test","script":{"exec":["var j=pm.response.json();if(j.vault_address)pm.environment.set('vault_address',j.vault_address);"]}}],
-          "request": { "method": "POST", "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\n  \"min_goal_usdc\": 1000,\n  \"max_cap_usdc\": 5000,\n  \"max_per_investor\": 2500,\n  \"duration_seconds\": 600,\n  \"refund_window_seconds\": 60,\n  \"issuer_wallet\": \"{{issuer}}\"\n}"},
-          "url": "{{base}}/deploy-vault" }
+        {
+          "name": "F1. Deploy Vault",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var j=pm.response.json();if(j.vault_address)pm.environment.set('vault_address',j.vault_address);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"min_goal_usdc\": 1000,\n  \"max_cap_usdc\": 5000,\n  \"max_per_investor\": 2500,\n  \"duration_seconds\": 600,\n  \"refund_window_seconds\": 60,\n  \"issuer_wallet\": \"{{issuer}}\"\n}"
+            },
+            "url": "{{base}}/deploy-vault"
+          }
         },
-        { "name": "F2. Invest 1200",
-          "request": { "method": "POST", "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\n  \"vault_address\": \"{{vault_address}}\",\n  \"investor_wallet\": \"{{investor1}}\",\n  \"amount_usdc\": 1200,\n  \"risk_acknowledgement_completed\": true,\n  \"offering_document_confirmed\": true,\n  \"subscription_agreement_signed\": true,\n  \"subscription_timestamp\": \"2025-03-01T10:00:00Z\"\n}"},
-          "url": "{{base}}/invest" }
+        {
+          "name": "F2. Invest 1200",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"vault_address\": \"{{vault_address}}\",\n  \"investor_wallet\": \"{{investor1}}\",\n  \"amount_usdc\": 1200,\n  \"risk_acknowledgement_completed\": true,\n  \"offering_document_confirmed\": true,\n  \"subscription_agreement_signed\": true,\n  \"subscription_timestamp\": \"2025-03-01T10:00:00Z\"\n}"
+            },
+            "url": "{{base}}/invest"
+          }
         },
-        { "name": "F3. Skip 70s (refund window expired)",
-          "request": { "method": "POST", "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\n  \"seconds\": 70\n}"},
-          "url": "{{base}}/time/advance" }
+        {
+          "name": "F3. Skip 70s (refund window expired)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"seconds\": 70\n}"
+            },
+            "url": "{{base}}/time/advance"
+          }
         },
-        { "name": "F4. Trigger Amendment (resets all refund windows)",
-          "event": [{"listen":"test","script":{"exec":[
-            "var j=pm.response.json();",
-            "pm.test('Amendment triggered', ()=> pm.expect(j.success).to.be.true);"
-          ]}}],
-          "request": { "method": "POST", "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\n  \"vault_address\": \"{{vault_address}}\"\n}"},
-          "url": "{{base}}/amend-offering" }
+        {
+          "name": "F4. Trigger Amendment (resets all refund windows)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Triggered', ()=> pm.expect(pm.response.json().success).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"vault_address\": \"{{vault_address}}\"\n}"
+            },
+            "url": "{{base}}/amend-offering"
+          }
         },
-        { "name": "F5. Check Investor (refund_eligible=TRUE again!)",
-          "event": [{"listen":"test","script":{"exec":[
-            "var j=pm.response.json();",
-            "pm.test('Refund eligible again', ()=> pm.expect(j.refund_eligible).to.be.true);"
-          ]}}],
-          "request": { "method": "GET", "url": "{{base}}/vault/{{vault_address}}/investor/{{investor1}}" }
+        {
+          "name": "F5. Check Investor (refund_eligible=TRUE again!)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Eligible again', ()=> pm.expect(pm.response.json().refund_eligible).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{base}}/vault/{{vault_address}}/investor/{{investor1}}"
+          }
         }
       ]
     },
@@ -330,90 +1004,328 @@
       "name": "💰 SCENARIO G — $2,500 Investor Cap",
       "description": "Test per-investor limit enforcement.\nRun G1→G4 in order.",
       "item": [
-        { "name": "G1. Deploy Vault",
-          "event": [{"listen":"test","script":{"exec":["var j=pm.response.json();if(j.vault_address)pm.environment.set('vault_address',j.vault_address);"]}}],
-          "request": { "method": "POST", "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\n  \"min_goal_usdc\": 1000,\n  \"max_cap_usdc\": 50000,\n  \"max_per_investor\": 2500,\n  \"duration_seconds\": 600,\n  \"refund_window_seconds\": 120,\n  \"issuer_wallet\": \"{{issuer}}\"\n}"},
-          "url": "{{base}}/deploy-vault" }
+        {
+          "name": "G1. Deploy Vault",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var j=pm.response.json();if(j.vault_address)pm.environment.set('vault_address',j.vault_address);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"min_goal_usdc\": 1000,\n  \"max_cap_usdc\": 50000,\n  \"max_per_investor\": 2500,\n  \"duration_seconds\": 600,\n  \"refund_window_seconds\": 120,\n  \"issuer_wallet\": \"{{issuer}}\"\n}"
+            },
+            "url": "{{base}}/deploy-vault"
+          }
         },
-        { "name": "G2. Invest 2000 USDC (OK)",
-          "request": { "method": "POST", "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\n  \"vault_address\": \"{{vault_address}}\",\n  \"investor_wallet\": \"{{investor1}}\",\n  \"amount_usdc\": 2000,\n  \"risk_acknowledgement_completed\": true,\n  \"offering_document_confirmed\": true,\n  \"subscription_agreement_signed\": true,\n  \"subscription_timestamp\": \"2025-03-01T10:00:00Z\"\n}"},
-          "url": "{{base}}/invest" }
+        {
+          "name": "G2. Invest 2000 USDC (OK)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"vault_address\": \"{{vault_address}}\",\n  \"investor_wallet\": \"{{investor1}}\",\n  \"amount_usdc\": 2000,\n  \"risk_acknowledgement_completed\": true,\n  \"offering_document_confirmed\": true,\n  \"subscription_agreement_signed\": true,\n  \"subscription_timestamp\": \"2025-03-01T10:00:00Z\"\n}"
+            },
+            "url": "{{base}}/invest"
+          }
         },
-        { "name": "G3. Invest 600 MORE (should FAIL — 2000+600=2600 > 2500)",
-          "event": [{"listen":"test","script":{"exec":[
-            "pm.test('Status 400', ()=> pm.expect(pm.response.code).to.eql(400));",
-            "var j=pm.response.json();",
-            "pm.test('Cap error', ()=> pm.expect(j.error_code).to.eql('EXCEEDS_INVESTOR_CAP'));"
-          ]}}],
-          "request": { "method": "POST", "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\n  \"vault_address\": \"{{vault_address}}\",\n  \"investor_wallet\": \"{{investor1}}\",\n  \"amount_usdc\": 600,\n  \"risk_acknowledgement_completed\": true,\n  \"offering_document_confirmed\": true,\n  \"subscription_agreement_signed\": true,\n  \"subscription_timestamp\": \"2025-03-01T10:00:00Z\"\n}"},
-          "url": "{{base}}/invest" }
+        {
+          "name": "G3. Invest 600 MORE (FAIL — exceeds 2500 cap)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Rejected', ()=> pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('Cap error', ()=> pm.expect(pm.response.json().error_code).to.eql('EXCEEDS_INVESTOR_CAP'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"vault_address\": \"{{vault_address}}\",\n  \"investor_wallet\": \"{{investor1}}\",\n  \"amount_usdc\": 600,\n  \"risk_acknowledgement_completed\": true,\n  \"offering_document_confirmed\": true,\n  \"subscription_agreement_signed\": true,\n  \"subscription_timestamp\": \"2025-03-01T10:00:00Z\"\n}"
+            },
+            "url": "{{base}}/invest"
+          }
         },
-        { "name": "G4. Invest 500 MORE (OK — 2000+500=2500 exactly at cap)",
-          "event": [{"listen":"test","script":{"exec":[
-            "var j=pm.response.json();",
-            "pm.test('Invested at cap', ()=> pm.expect(j.success).to.be.true);"
-          ]}}],
-          "request": { "method": "POST", "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\n  \"vault_address\": \"{{vault_address}}\",\n  \"investor_wallet\": \"{{investor1}}\",\n  \"amount_usdc\": 500,\n  \"risk_acknowledgement_completed\": true,\n  \"offering_document_confirmed\": true,\n  \"subscription_agreement_signed\": true,\n  \"subscription_timestamp\": \"2025-03-01T10:00:00Z\"\n}"},
-          "url": "{{base}}/invest" }
+        {
+          "name": "G4. Invest 500 MORE (OK — exactly at 2500 cap)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('At cap', ()=> pm.expect(pm.response.json().success).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"vault_address\": \"{{vault_address}}\",\n  \"investor_wallet\": \"{{investor1}}\",\n  \"amount_usdc\": 500,\n  \"risk_acknowledgement_completed\": true,\n  \"offering_document_confirmed\": true,\n  \"subscription_agreement_signed\": true,\n  \"subscription_timestamp\": \"2025-03-01T10:00:00Z\"\n}"
+            },
+            "url": "{{base}}/invest"
+          }
         }
       ]
     },
     {
       "name": "🛑 SCENARIO H — Error Cases (All Should FAIL)",
-      "description": "Tests that the smart contract correctly rejects invalid operations.",
+      "description": "Validates that invalid operations are correctly rejected.",
       "item": [
-        { "name": "H1. Invest with 0 amount",
-          "event": [{"listen":"test","script":{"exec":["pm.test('Rejected', ()=> pm.expect(pm.response.code).to.eql(400));"]}}],
-          "request": { "method": "POST", "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\n  \"vault_address\": \"{{vault_address}}\",\n  \"investor_wallet\": \"{{investor1}}\",\n  \"amount_usdc\": 0,\n  \"risk_acknowledgement_completed\": true,\n  \"offering_document_confirmed\": true,\n  \"subscription_agreement_signed\": true,\n  \"subscription_timestamp\": \"2025-03-01T10:00:00Z\"\n}"},
-          "url": "{{base}}/invest" }
+        {
+          "name": "H1. Invest 0 amount",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Rejected', ()=> pm.expect(pm.response.code).to.eql(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"vault_address\": \"{{vault_address}}\",\n  \"investor_wallet\": \"{{investor1}}\",\n  \"amount_usdc\": 0,\n  \"risk_acknowledgement_completed\": true,\n  \"offering_document_confirmed\": true,\n  \"subscription_agreement_signed\": true,\n  \"subscription_timestamp\": \"2025-03-01T10:00:00Z\"\n}"
+            },
+            "url": "{{base}}/invest"
+          }
         },
-        { "name": "H2. Invest without compliance (no risk ack)",
-          "event": [{"listen":"test","script":{"exec":["pm.test('Rejected', ()=> pm.expect(pm.response.code).to.eql(400));"]}}],
-          "request": { "method": "POST", "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\n  \"vault_address\": \"{{vault_address}}\",\n  \"investor_wallet\": \"{{investor1}}\",\n  \"amount_usdc\": 100,\n  \"risk_acknowledgement_completed\": false,\n  \"offering_document_confirmed\": true,\n  \"subscription_agreement_signed\": true,\n  \"subscription_timestamp\": \"2025-03-01T10:00:00Z\"\n}"},
-          "url": "{{base}}/invest" }
+        {
+          "name": "H2. Invest without risk acknowledgement",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Rejected', ()=> pm.expect(pm.response.code).to.eql(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"vault_address\": \"{{vault_address}}\",\n  \"investor_wallet\": \"{{investor1}}\",\n  \"amount_usdc\": 100,\n  \"risk_acknowledgement_completed\": false,\n  \"offering_document_confirmed\": true,\n  \"subscription_agreement_signed\": true,\n  \"subscription_timestamp\": \"2025-03-01T10:00:00Z\"\n}"
+            },
+            "url": "{{base}}/invest"
+          }
         },
-        { "name": "H3. Release before deadline",
-          "event": [{"listen":"test","script":{"exec":[
-            "pm.test('Rejected', ()=> pm.expect(pm.response.code).to.eql(400));",
-            "var j=pm.response.json();",
-            "pm.test('Deadline error', ()=> pm.expect(j.error_code).to.eql('DEADLINE_NOT_REACHED'));"
-          ]}}],
-          "request": { "method": "POST", "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\n  \"vault_address\": \"{{vault_address}}\",\n  \"issuer_wallet\": \"{{issuer}}\"\n}"},
-          "url": "{{base}}/release" }
+        {
+          "name": "H3. Release before deadline",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Rejected', ()=> pm.expect(pm.response.code).to.eql(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"vault_address\": \"{{vault_address}}\",\n  \"issuer_wallet\": \"{{issuer}}\"\n}"
+            },
+            "url": "{{base}}/release"
+          }
         },
-        { "name": "H4. Emergency refund without reason",
-          "event": [{"listen":"test","script":{"exec":["pm.test('Rejected', ()=> pm.expect(pm.response.code).to.eql(400));"]}}],
-          "request": { "method": "POST", "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\n  \"vault_address\": \"{{vault_address}}\",\n  \"investor_wallet\": \"{{investor1}}\",\n  \"reason\": \"short\"\n}"},
-          "url": "{{base}}/emergency-refund" }
+        {
+          "name": "H4. Emergency refund with short reason",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Rejected', ()=> pm.expect(pm.response.code).to.eql(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"vault_address\": \"{{vault_address}}\",\n  \"investor_wallet\": \"{{investor1}}\",\n  \"reason\": \"short\"\n}"
+            },
+            "url": "{{base}}/emergency-refund"
+          }
         },
-        { "name": "H5. Deploy vault without issuer wallet",
-          "event": [{"listen":"test","script":{"exec":["pm.test('Rejected', ()=> pm.expect(pm.response.code).to.eql(400));"]}}],
-          "request": { "method": "POST", "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\n  \"min_goal_usdc\": 1000,\n  \"max_cap_usdc\": 5000\n}"},
-          "url": "{{base}}/deploy-vault" }
+        {
+          "name": "H5. Deploy without issuer wallet",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Rejected', ()=> pm.expect(pm.response.code).to.eql(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"min_goal_usdc\": 1000,\n  \"max_cap_usdc\": 5000\n}"
+            },
+            "url": "{{base}}/deploy-vault"
+          }
         }
       ]
     },
     {
-      "name": "📊 Read Endpoints",
+      "name": "📊 Read Endpoints + Fee Checks",
       "item": [
-        { "name": "List All Vaults", "request": { "method": "GET", "url": "{{base}}/vaults" } },
-        { "name": "Vault Status", "request": { "method": "GET", "url": "{{base}}/vault/{{vault_address}}" } },
-        { "name": "Investor Info", "request": { "method": "GET", "url": "{{base}}/vault/{{vault_address}}/investor/{{investor1}}" } },
-        { "name": "Event History", "request": { "method": "GET", "url": "{{base}}/vault/{{vault_address}}/history" } },
-        { "name": "Platform Wallet", "request": { "method": "GET", "url": "{{base}}/wallet/{{admin}}" } },
-        { "name": "Investor1 Wallet", "request": { "method": "GET", "url": "{{base}}/wallet/{{investor1}}" } },
-        { "name": "Investor2 Wallet", "request": { "method": "GET", "url": "{{base}}/wallet/{{investor2}}" } },
-        { "name": "Issuer Wallet", "request": { "method": "GET", "url": "{{base}}/wallet/{{issuer}}" } },
-        { "name": "Blockchain Time", "request": { "method": "GET", "url": "{{base}}/time" } }
+        {
+          "name": "List All Vaults",
+          "request": {
+            "method": "GET",
+            "url": "{{base}}/vaults"
+          }
+        },
+        {
+          "name": "Vault Status",
+          "request": {
+            "method": "GET",
+            "url": "{{base}}/vault/{{vault_address}}"
+          }
+        },
+        {
+          "name": "Vault Fee Info",
+          "request": {
+            "method": "GET",
+            "url": "{{base}}/vault/{{vault_address}}/fees"
+          }
+        },
+        {
+          "name": "Investor Info",
+          "request": {
+            "method": "GET",
+            "url": "{{base}}/vault/{{vault_address}}/investor/{{investor1}}"
+          }
+        },
+        {
+          "name": "Event History",
+          "request": {
+            "method": "GET",
+            "url": "{{base}}/vault/{{vault_address}}/history"
+          }
+        },
+        {
+          "name": "Admin Wallet",
+          "request": {
+            "method": "GET",
+            "url": "{{base}}/wallet/{{admin}}"
+          }
+        },
+        {
+          "name": "Investor1 Wallet",
+          "request": {
+            "method": "GET",
+            "url": "{{base}}/wallet/{{investor1}}"
+          }
+        },
+        {
+          "name": "Investor2 Wallet",
+          "request": {
+            "method": "GET",
+            "url": "{{base}}/wallet/{{investor2}}"
+          }
+        },
+        {
+          "name": "Issuer Wallet",
+          "request": {
+            "method": "GET",
+            "url": "{{base}}/wallet/{{issuer}}"
+          }
+        },
+        {
+          "name": "💰 Fee Wallet Balance (accumulated 7% from all releases)",
+          "request": {
+            "method": "GET",
+            "url": "{{base}}/wallet/{{fee_wallet}}"
+          }
+        },
+        {
+          "name": "Blockchain Time",
+          "request": {
+            "method": "GET",
+            "url": "{{base}}/time"
+          }
+        }
       ]
     }
   ]
