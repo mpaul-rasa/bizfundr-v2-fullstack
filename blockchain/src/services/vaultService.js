@@ -32,13 +32,15 @@ const VAULT_ABI = [
   "event Deposited(address indexed investor, uint256 amount, uint256 refundDeadline, uint256 totalAfter)",
   "event Refunded(address indexed investor, uint256 amount, string reason)",
   // "event FundsReleased(address indexed issuer, uint256 amount, uint256 investorCount)",
-  "event FundsReleased(address indexed issuer, uint256 issuerAmount, uint256 platformFee, uint256 investorCount)",
+  // "event FundsReleased(address indexed issuer, uint256 issuerAmount, uint256 platformFee, uint256 investorCount)",
+  "event FundsReleased(address indexed issuer, uint256 issuerAmount, uint256 platformFee, uint256 feePercent, uint256 investorCount)",
   "event OfferingFailed(uint256 totalRefunded, uint256 investorCount)",
   "event EmergencyRefund(address indexed investor, uint256 amount, string reason)",
   "event AmendmentWindowTriggered(uint256 newDeadline, uint256 investorCount)",
   "function platformFeeWallet() view returns (address)",
   "function getFeeInfo() view returns (address,uint256,uint256,uint256)",
-  "event PlatformFeeCollected(address indexed feeWallet, uint256 feeAmount, address indexed vault)",
+  // "event PlatformFeeCollected(address indexed feeWallet, uint256 feeAmount, address indexed vault)",
+  "event PlatformFeeCollected(address indexed feeWallet, uint256 feeAmount, uint256 feePercent, address indexed vault)",
 ];
 
 const HARDHAT_KEYS = {
@@ -98,6 +100,78 @@ class VaultService {
 
   // ═══════════════════ DEPLOY VAULT ═══════════════════
 
+  // async deployVault({
+  //   minGoalUsdc,
+  //   maxCapUsdc,
+  //   maxPerInvestor,
+  //   durationSeconds,
+  //   refundWindowSeconds,
+  //   issuerWallet,
+  //   platformFeePercent,
+  //   platformFeeWallet
+  // }) {
+  //     logger.info("Deploying BuzfundrVault", {
+  //     minGoalUsdc,
+  //     maxCapUsdc,
+  //     issuerWallet,
+  //     platformFeePercent,
+  //     platformFeeWallet,
+  //   });
+
+  //   const artifactPath = path.join(
+  //     __dirname,
+  //     "../../artifacts/contracts/BuzfundrVault.sol/BuzfundrVault.json",
+  //   );
+  //   if (!fs.existsSync(artifactPath))
+  //     throw new Error("BuzfundrVault not compiled. Run: npx hardhat compile");
+  //   const artifact = JSON.parse(fs.readFileSync(artifactPath, "utf8"));
+
+  //   const admin = this._newAdmin();
+  //   const factory = new ethers.ContractFactory(
+  //     artifact.abi,
+  //     artifact.bytecode,
+  //     admin,
+  //   );
+
+  //   const platformFeeWallet =
+  //     process.env.PLATFORM_FEE_WALLET || this._newAdmin().address; //
+
+  //   const vault = await factory.deploy(
+  //     this.usdcAddress,
+  //     issuerWallet,
+  //     platformFeeWallet,
+  //     ethers.parseUnits(minGoalUsdc.toString(), 6),
+  //     ethers.parseUnits(maxCapUsdc.toString(), 6),
+  //     ethers.parseUnits((maxPerInvestor || 2500).toString(), 6),
+  //     durationSeconds || 7776000,
+  //     refundWindowSeconds || 172800,
+  //     { gasLimit: this.gasLimit * 6 },
+  //   );
+  //   await vault.waitForDeployment();
+  //   const vaultAddr = await vault.getAddress();
+
+  //   this.deployedVaults.push({
+  //     address: vaultAddr,
+  //     issuerWallet,
+  //     minGoalUsdc,
+  //     maxCapUsdc,
+  //     deployedAt: new Date().toISOString(),
+  //   });
+  //   logger.info("Vault deployed", { address: vaultAddr });
+
+  //   return {
+  //     success: true,
+  //     vault_address: vaultAddr,
+  //     issuer_wallet: issuerWallet,
+  //     min_goal_usdc: minGoalUsdc,
+  //     max_cap_usdc: maxCapUsdc,
+  //     max_per_investor: maxPerInvestor || 2500,
+  //     duration_seconds: durationSeconds || 7776000,
+  //     platform_fee_wallet: platformFeeWallet,
+  //     platform_fee_percent: 7,
+  //   };
+  // }
+
   async deployVault({
     minGoalUsdc,
     maxCapUsdc,
@@ -105,11 +179,15 @@ class VaultService {
     durationSeconds,
     refundWindowSeconds,
     issuerWallet,
+    platformFeePercent,
+    platformFeeWallet,
   }) {
     logger.info("Deploying BuzfundrVault", {
       minGoalUsdc,
       maxCapUsdc,
       issuerWallet,
+      platformFeePercent,
+      platformFeeWallet,
     });
 
     const artifactPath = path.join(
@@ -120,6 +198,18 @@ class VaultService {
       throw new Error("BuzfundrVault not compiled. Run: npx hardhat compile");
     const artifact = JSON.parse(fs.readFileSync(artifactPath, "utf8"));
 
+    // Use parameter from Laravel DB, fallback to .env, fallback to admin wallet
+    const feeWallet =
+      platformFeeWallet ||
+      process.env.PLATFORM_FEE_WALLET ||
+      this._newAdmin().address;
+    const feePercent =
+      platformFeePercent ?? parseInt(process.env.PLATFORM_FEE_PERCENT || "7");
+
+    if (feePercent < 0 || feePercent > 30) {
+      throw new Error("Fee percent must be between 0 and 30");
+    }
+
     const admin = this._newAdmin();
     const factory = new ethers.ContractFactory(
       artifact.abi,
@@ -127,18 +217,17 @@ class VaultService {
       admin,
     );
 
-    const platformFeeWallet =
-      process.env.PLATFORM_FEE_WALLET || this._newAdmin().address; //
-
+    // 9 constructor args (was 8 — added feePercent as 4th arg)
     const vault = await factory.deploy(
-      this.usdcAddress,
-      issuerWallet,
-      platformFeeWallet,
-      ethers.parseUnits(minGoalUsdc.toString(), 6),
-      ethers.parseUnits(maxCapUsdc.toString(), 6),
-      ethers.parseUnits((maxPerInvestor || 2500).toString(), 6),
-      durationSeconds || 7776000,
-      refundWindowSeconds || 172800,
+      this.usdcAddress, // 1. _usdc
+      issuerWallet, // 2. _issuer
+      feeWallet, // 3. _platformFeeWallet
+      feePercent, // 4. _platformFeePercent ← NEW!
+      ethers.parseUnits(minGoalUsdc.toString(), 6), // 5. _minGoal
+      ethers.parseUnits(maxCapUsdc.toString(), 6), // 6. _maxCap
+      ethers.parseUnits((maxPerInvestor || 2500).toString(), 6), // 7. _maxPerInvestor
+      durationSeconds || 7776000, // 8. _durationSeconds
+      refundWindowSeconds || 172800, // 9. _refundWindowSeconds
       { gasLimit: this.gasLimit * 6 },
     );
     await vault.waitForDeployment();
@@ -149,9 +238,15 @@ class VaultService {
       issuerWallet,
       minGoalUsdc,
       maxCapUsdc,
+      feePercent,
+      feeWallet,
       deployedAt: new Date().toISOString(),
     });
-    logger.info("Vault deployed", { address: vaultAddr });
+    logger.info("Vault deployed", {
+      address: vaultAddr,
+      feePercent,
+      feeWallet,
+    });
 
     return {
       success: true,
@@ -161,8 +256,8 @@ class VaultService {
       max_cap_usdc: maxCapUsdc,
       max_per_investor: maxPerInvestor || 2500,
       duration_seconds: durationSeconds || 7776000,
-      platform_fee_wallet: platformFeeWallet,
-      platform_fee_percent: 7,
+      platform_fee_wallet: feeWallet,
+      platform_fee_percent: feePercent, // Dynamic! Not hardcoded 7
     };
   }
 
@@ -430,16 +525,28 @@ class VaultService {
         //   entry.issuer = e.args[0];
         //   entry.amount_usdc = ethers.formatUnits(e.args[1], 6);
         // }
+        // else if (type === "release") {
+        //   entry.issuer = e.args[0];
+        //   entry.issuer_amount_usdc = ethers.formatUnits(e.args[1], 6);
+        //   entry.platform_fee_usdc = ethers.formatUnits(e.args[2], 6);
+        // }
         else if (type === "release") {
           entry.issuer = e.args[0];
           entry.issuer_amount_usdc = ethers.formatUnits(e.args[1], 6);
           entry.platform_fee_usdc = ethers.formatUnits(e.args[2], 6);
+          entry.fee_percent = Number(e.args[3]);
         } else if (type === "fail") {
           entry.total_refunded_usdc = ethers.formatUnits(e.args[0], 6);
           entry.investor_count = Number(e.args[1]);
-        } else if (type === "platform_fee") {
+        }
+        // else if (type === "platform_fee") {
+        //   entry.fee_wallet = e.args[0];
+        //   entry.fee_amount_usdc = ethers.formatUnits(e.args[1], 6);
+        // }
+        else if (type === "platform_fee") {
           entry.fee_wallet = e.args[0];
           entry.fee_amount_usdc = ethers.formatUnits(e.args[1], 6);
+          entry.fee_percent = Number(e.args[2]);
         }
         events.push(entry);
       }

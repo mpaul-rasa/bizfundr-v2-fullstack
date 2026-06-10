@@ -9,6 +9,14 @@ const badReq = (res, msg) =>
 
 // ═══════════════ DEPLOY ═══════════════
 async function deployVault(req, res) {
+  // const {
+  //   min_goal_usdc,
+  //   max_cap_usdc,
+  //   max_per_investor,
+  //   duration_seconds,
+  //   refund_window_seconds,
+  //   issuer_wallet,
+  // } = req.body;
   const {
     min_goal_usdc,
     max_cap_usdc,
@@ -16,7 +24,10 @@ async function deployVault(req, res) {
     duration_seconds,
     refund_window_seconds,
     issuer_wallet,
+    platform_fee_percent,
+    platform_fee_wallet,
   } = req.body;
+
   if (!min_goal_usdc || !max_cap_usdc)
     return badReq(res, "Required: min_goal_usdc, max_cap_usdc");
   if (!issuer_wallet || !isAddr(issuer_wallet))
@@ -29,6 +40,11 @@ async function deployVault(req, res) {
       durationSeconds: parseInt(duration_seconds || "120"),
       refundWindowSeconds: parseInt(refund_window_seconds || "172800"),
       issuerWallet: issuer_wallet,
+      platformFeePercent:
+        platform_fee_percent != null
+          ? parseInt(platform_fee_percent)
+          : undefined,
+      platformFeeWallet: platform_fee_wallet || undefined,
     });
     return res.status(201).json(result);
   } catch (e) {
