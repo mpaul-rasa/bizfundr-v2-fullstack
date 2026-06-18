@@ -37,24 +37,24 @@ const VAULT_ABI = [
   "event OfferingFailed(uint256 totalRefunded, uint256 investorCount)",
   "event EmergencyRefund(address indexed investor, uint256 amount, string reason)",
   "event AmendmentWindowTriggered(uint256 newDeadline, uint256 investorCount)",
+  "function usdc() view returns (address)",
+  "function recordComplianceHash(bytes32 hash)",
+  "function complianceHashes(address) view returns (bytes32)",
+  "event ComplianceRecorded(address indexed investor, bytes32 hash, uint256 timestamp)",
   "function platformFeeWallet() view returns (address)",
+  "function pauseVault()",
+  "function unpauseVault()",
+  "function paused() view returns (bool)",
+  "function emergencySweep(address token, address to, uint256 amount)",
+  "function recordAuditReport(bytes32 reportHash, string calldata auditorName)",
+  "function getAuditCount() view returns (uint256)",
+  "function auditRecords(uint256) view returns (bytes32 reportHash, string auditorName, uint256 recordedAt)",
+  "event AuditReported(bytes32 indexed reportHash, string auditorName, uint256 timestamp)",
   "function getFeeInfo() view returns (address,uint256,uint256,uint256)",
   // "event PlatformFeeCollected(address indexed feeWallet, uint256 feeAmount, address indexed vault)",
   "event PlatformFeeCollected(address indexed feeWallet, uint256 feeAmount, uint256 feePercent, address indexed vault)",
 ];
 
-const HARDHAT_KEYS = {
-  "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266":
-    "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
-  "0x70997970c51812dc3a010c7d01b50e0d17dc79c8":
-    "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
-  "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc":
-    "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a",
-  "0x90f79bf6eb2c4f870365e785982e1f101e93b906":
-    "0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6",
-  "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65":
-    "0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a",
-};
 
 class VaultService {
   constructor() {
@@ -76,8 +76,8 @@ class VaultService {
     return new ethers.Wallet(this.adminKey, this._newProvider());
   }
   _newSigner(address) {
-    const key = HARDHAT_KEYS[address.toLowerCase()];
-    return key ? new ethers.Wallet(key, this._newProvider()) : null;
+    // Production: investors sign via MetaMask — this service does not hold wallet keys
+    throw new Error(`Wallet signing not supported server-side for ${address}. Use MetaMask on the frontend.`);
   }
   _newUsdc(signer) {
     return new ethers.Contract(

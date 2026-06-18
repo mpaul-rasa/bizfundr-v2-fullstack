@@ -113,6 +113,7 @@ class OfferingController extends Controller
             'offering_document_confirmed' => 'required|boolean|accepted',
             'subscription_agreement_signed' => 'required|boolean|accepted',
             'subscription_timestamp' => 'required|date',
+            'tx_hash' => 'nullable|string|regex:/^0x[a-fA-F0-9]{64}$/',
         ]);
 
         if ($v->fails())
@@ -186,16 +187,22 @@ class OfferingController extends Controller
             ]
         );
 
-        // Call blockchain
-        $result = $this->blockchain->invest([
-            'vault_address' => $offering->vault_address,
-            'investor_wallet' => $request->investor_wallet,
-            'amount_usdc' => $request->amount_usdc,
-            'risk_acknowledgement_completed' => true,
-            'offering_document_confirmed' => true,
-            'subscription_agreement_signed' => true,
-            'subscription_timestamp' => $request->subscription_timestamp,
-        ]);
+        // If tx_hash provided, MetaMask already executed on-chain — record only
+        if ($request->tx_hash) {
+            $txHash = $request->tx_hash;
+        } else {
+            // Fallback: backend-signed (admin / testing only)
+            $result = $this->blockchain->invest([
+                'vault_address' => $offering->vault_address,
+                'investor_wallet' => $request->investor_wallet,
+                'amount_usdc' => $request->amount_usdc,
+                'risk_acknowledgement_completed' => true,
+                'offering_document_confirmed' => true,
+                'subscription_agreement_signed' => true,
+                'subscription_timestamp' => $request->subscription_timestamp,
+            ]);
+            $txHash = $result['tx_hash'];
+        }
 
         // Save investment record
         // $investmentId = DB::table('investments')->insertGetId([
@@ -216,21 +223,22 @@ class OfferingController extends Controller
             'investor_id' => $investorId,
             'amount_usdc' => $request->amount_usdc,
             'status' => 'locked',
-            'tx_hash' => $result['tx_hash'],
+            'tx_hash' => $txHash,
             'subscription_signed_at' => $subscriptionTime,
             'refund_eligible_until' => now()->addHours(48),
             'created_at' => now(),
             'updated_at' => now(),
         ]);
 
-        $this->auditLog('invest', $request->offering_id, $investorId, "investor:{$request->investor_wallet}", $result['tx_hash'], $request);
+        $this->auditLog('invest', $request->offering_id, $investorId, "investor:{$request->investor_wallet}", $txHash, $request);
 
         return response()->json([
             'success' => true,
             'investment_id' => $investmentId,
-            'tx_hash' => $result['tx_hash'],
+            'tx_hash' => $txHash,
             'amount_usdc' => $request->amount_usdc,
             'refund_eligible_until' => now()->addHours(48)->toISOString(),
+            'signed_by' => $request->tx_hash ? 'metamask' : 'backend',
             'message' => "Invested {$request->amount_usdc} USDC. Refund eligible for 48 hours.",
         ]);
     }

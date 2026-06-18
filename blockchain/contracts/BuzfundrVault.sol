@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity 0.8.35;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
 
 /**
  * @title BuzfundrVault
@@ -28,7 +29,7 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
  *   - On release: fee% to platform wallet, rest to issuer
  *   - On fail/refund: 0% fee
  */
-contract BuzfundrVault is Ownable, ReentrancyGuard {
+contract BuzfundrVault is Ownable, ReentrancyGuard, Pausable {
     IERC20 public immutable usdc;
     address public immutable issuer;
     address public immutable platformFeeWallet;
@@ -48,6 +49,7 @@ contract BuzfundrVault is Ownable, ReentrancyGuard {
 
     mapping(address => uint256) public investorDeposits;
     mapping(address => uint256) public investorRefundDeadline;
+    mapping(address => bytes32) public complianceHashes;
     address[] public investors;
     mapping(address => bool) private isInvestor;
 
@@ -78,6 +80,7 @@ contract BuzfundrVault is Ownable, ReentrancyGuard {
         string reason
     );
     event AmendmentWindowTriggered(uint256 newDeadline, uint256 investorCount);
+    event ComplianceRecorded(address indexed investor, bytes32 hash, uint256 timestamp);
 
     error VaultClosed();
     error DeadlinePassed();
@@ -92,6 +95,7 @@ contract BuzfundrVault is Ownable, ReentrancyGuard {
     error TransferFailed();
     error NotIssuer();
     error InvalidFeePercent();
+    error FailDeadlinePassed();
 
     modifier onlyIssuer() {
         if (msg.sender != issuer) revert NotIssuer();
@@ -121,6 +125,7 @@ contract BuzfundrVault is Ownable, ReentrancyGuard {
         require(_issuer != address(0), "Invalid issuer");
         require(_platformFeeWallet != address(0), "Invalid fee wallet");
         if (_platformFeePercent > 30) revert InvalidFeePercent(); // Max 30% sanity check
+        require(_durationSeconds > 0 && _durationSeconds <= 7776000, "Duration must be 1s-90 days (NI 45-110)");
         require(_minGoal > 0 && _maxCap >= _minGoal, "Invalid goal/cap");
         require(_maxPerInvestor > 0, "Invalid investor cap");
 
@@ -139,7 +144,7 @@ contract BuzfundrVault is Ownable, ReentrancyGuard {
         isActive = true;
     }
 
-    function deposit(uint256 amount) external nonReentrant whenActive {
+    function deposit(uint256 amount) external nonReentrant whenActive whenNotPaused {
         if (block.timestamp > offeringDeadline) revert DeadlinePassed();
         if (amount == 0) revert AmountZero();
         if (totalDeposited + amount > maxCap)
@@ -170,10 +175,14 @@ contract BuzfundrVault is Ownable, ReentrancyGuard {
         );
     }
 
-    function refund() external nonReentrant whenActive {
+    function refund() external nonReentrant {
+        if (!isActive && !isFailed) revert VaultClosed();
+
         uint256 amount = investorDeposits[msg.sender];
         if (amount == 0) revert NoDepositFound();
-        if (block.timestamp > investorRefundDeadline[msg.sender])
+
+        // 48h window only applies to active offerings; failed offerings allow anytime claim
+        if (isActive && block.timestamp > investorRefundDeadline[msg.sender])
             revert RefundWindowExpired();
 
         investorDeposits[msg.sender] = 0;
@@ -185,7 +194,9 @@ contract BuzfundrVault is Ownable, ReentrancyGuard {
         emit Refunded(
             msg.sender,
             amount,
-            "Investor voluntary withdrawal within 48hr window"
+            isFailed
+                ? "Offering failed - investor claimed refund"
+                : "Investor voluntary withdrawal within 48hr window"
         );
     }
 
@@ -193,7 +204,7 @@ contract BuzfundrVault is Ownable, ReentrancyGuard {
      * @notice Release: dynamic fee% to platform, rest to issuer
      * Fee % was locked at deployment — cannot be changed
      */
-    function releaseFunds() external nonReentrant onlyIssuer whenActive {
+    function releaseFunds() external nonReentrant onlyIssuer whenActive whenNotPaused {
         if (block.timestamp <= offeringDeadline) revert DeadlineNotReached();
         if (totalDeposited < minGoal) revert GoalNotReached();
 
@@ -204,6 +215,7 @@ contract BuzfundrVault is Ownable, ReentrancyGuard {
 
         isActive = false;
         isReleased = true;
+        totalDeposited = 0;
 
         if (platformFee > 0) {
             bool feeOk = usdc.transfer(platformFeeWallet, platformFee);
@@ -229,35 +241,19 @@ contract BuzfundrVault is Ownable, ReentrancyGuard {
 
     function failOffering() external nonReentrant onlyOwner whenActive {
         if (block.timestamp <= offeringDeadline) revert DeadlineNotReached();
+        if (block.timestamp > failDeadline) revert FailDeadlinePassed();
         if (totalDeposited >= minGoal) revert GoalAlreadyReached();
 
         isActive = false;
         isFailed = true;
-        uint256 totalRefunded = 0;
-        uint256 count = investors.length;
-
-        for (uint256 i = 0; i < count; i++) {
-            address inv = investors[i];
-            uint256 amount = investorDeposits[inv];
-            if (amount > 0) {
-                investorDeposits[inv] = 0;
-                totalRefunded += amount;
-                bool success = usdc.transfer(inv, amount);
-                if (!success) revert TransferFailed();
-                emit Refunded(
-                    inv,
-                    amount,
-                    "Offering failed - goal not reached"
-                );
-            }
-        }
-        totalDeposited = 0;
-        emit OfferingFailed(totalRefunded, count);
+        // Investors pull their own refunds by calling refund() — no unbounded loop
+        emit OfferingFailed(totalDeposited, investors.length);
     }
 
     function emergencyRefund(
         address investor
-    ) external nonReentrant onlyOwner whenActive {
+    ) external nonReentrant onlyOwner {
+        if (!isActive && !isFailed) revert VaultClosed();
         uint256 amount = investorDeposits[investor];
         if (amount == 0) revert NoDepositFound();
 
@@ -274,7 +270,7 @@ contract BuzfundrVault is Ownable, ReentrancyGuard {
         );
     }
 
-    function triggerAmendmentWindow() external onlyOwner whenActive {
+    function triggerAmendmentWindow() external nonReentrant onlyOwner whenActive {
         uint256 newDeadline = block.timestamp + refundWindowSeconds;
         uint256 count = investors.length;
         for (uint256 i = 0; i < count; i++) {
@@ -283,6 +279,95 @@ contract BuzfundrVault is Ownable, ReentrancyGuard {
             }
         }
         emit AmendmentWindowTriggered(newDeadline, count);
+    }
+
+    // ═══════════════════════ COMPLIANCE HASH ═══════════════════════
+
+    /**
+     * @notice Investor commits keccak256 hash of their signed compliance data on-chain.
+     *         Called at subscription signing step — creates permanent on-chain proof
+     *         that investor acknowledged Form 45-110F1, F2, and Subscription Agreement.
+     * @param hash keccak256(abi.encode(investorWallet, offeringId, subscriptionTimestamp))
+     */
+    function recordComplianceHash(bytes32 hash) external whenActive {
+        require(hash != bytes32(0), "Invalid hash");
+        complianceHashes[msg.sender] = hash;
+        emit ComplianceRecorded(msg.sender, hash, block.timestamp);
+    }
+
+    // ═══════════════════════ PAUSE / UNPAUSE ═══════════════════════
+
+    /**
+     * @notice Pause halts deposit() and releaseFunds() only.
+     *         refund() stays open so investors can always withdraw.
+     */
+    function pauseVault() external onlyOwner {
+        _pause();
+    }
+
+    function unpauseVault() external onlyOwner {
+        _unpause();
+    }
+
+    // ═══════════════════════ AUDIT REGISTRY ═══════════════════════
+
+    struct AuditRecord {
+        bytes32 reportHash;
+        string  auditorName;
+        uint256 recordedAt;
+    }
+
+    AuditRecord[] public auditRecords;
+    event AuditReported(bytes32 indexed reportHash, string auditorName, uint256 timestamp);
+
+    /**
+     * @notice Owner records hash of a formal audit report on-chain.
+     *         Multiple audits are supported — each is appended and immutable.
+     * @param reportHash  keccak256 of the audit report PDF/document
+     * @param auditorName Name of the audit firm (e.g. "Trail of Bits")
+     */
+    function recordAuditReport(bytes32 reportHash, string calldata auditorName) external onlyOwner {
+        require(reportHash != bytes32(0), "Invalid report hash");
+        require(bytes(auditorName).length > 0, "Auditor name required");
+        auditRecords.push(AuditRecord(reportHash, auditorName, block.timestamp));
+        emit AuditReported(reportHash, auditorName, block.timestamp);
+    }
+
+    function getAuditCount() external view returns (uint256) {
+        return auditRecords.length;
+    }
+
+    // ═══════════════════════ EMERGENCY SWEEP ═══════════════════════
+
+    /**
+     * @notice Recover any ERC-20 token stuck in this contract.
+     *         For the vault's own USDC: only callable after vault is closed (released or failed).
+     *         For any other token: callable any time (e.g. wrong token sent by mistake).
+     * @param token  ERC-20 token address to sweep
+     * @param to     Recipient address
+     * @param amount Amount in token's native decimals (0 = sweep full balance)
+     */
+    event EmergencySweep(address indexed token, address indexed to, uint256 amount);
+    error VaultStillActive();
+
+    function emergencySweep(address token, address to, uint256 amount) external nonReentrant onlyOwner {
+        require(token != address(0) && to != address(0), "Invalid address");
+
+        // Vault USDC can only be swept after vault closes to protect investor funds
+        if (token == address(usdc)) {
+            if (isActive) revert VaultStillActive();
+        }
+
+        IERC20 erc20 = IERC20(token);
+        uint256 bal = erc20.balanceOf(address(this));
+        require(bal > 0, "No balance to sweep");
+
+        uint256 sweepAmount = amount == 0 ? bal : amount;
+        require(sweepAmount <= bal, "Amount exceeds balance");
+
+        bool ok = erc20.transfer(to, sweepAmount);
+        if (!ok) revert TransferFailed();
+        emit EmergencySweep(token, to, sweepAmount);
     }
 
     // ═══════════════════════ VIEW ═══════════════════════
@@ -369,7 +454,7 @@ contract BuzfundrVault is Ownable, ReentrancyGuard {
         return (
             dep,
             dl,
-            dep > 0 && block.timestamp <= dl,
+            dep > 0 && (block.timestamp <= dl || isFailed),
             maxPerInvestor > dep ? maxPerInvestor - dep : 0
         );
     }
